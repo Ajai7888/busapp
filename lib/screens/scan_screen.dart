@@ -28,23 +28,25 @@ class _ScanScreenState extends State<ScanScreen> {
 
     final facultyName = data['name'] ?? 'Unknown';
     final busNumber = data['busNumber'] ?? 'NA';
-    final timestamp = DateTime.now();
 
-    // ✅ Save to attendance/{facultyName}/scans
+    // ✅ Firestore-compatible timestamp
+    final timestamp = Timestamp.now();
+
+    // ✅ Save to faculty scan path
     await FirebaseFirestore.instance
         .collection('attendance')
         .doc(facultyName)
         .collection('scans')
         .add({
           'studentId': rollNo,
-          'timestamp': timestamp.toIso8601String(),
+          'timestamp': timestamp,
           'busNumber': busNumber,
         });
 
-    // ✅ Also save to attendance_logs for flat log view
+    // ✅ Also save to flat logs
     await FirebaseFirestore.instance.collection('attendance_logs').add({
       'studentId': rollNo,
-      'timestamp': timestamp.toIso8601String(),
+      'timestamp': timestamp,
       'busNumber': busNumber,
       'scannedBy': facultyName,
     });

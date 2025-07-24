@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
@@ -19,6 +20,16 @@ class _AdminDashboardState extends State<AdminDashboard> {
   final int totalStudents = 60;
   final int totalBuses = 10;
 
+  int todayAttendance = 0;
+  int activeBusCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchTodayData(); // initial fetch
+    scheduleDailyRefresh(); // schedule 12AM refresh
+  }
+
   void _logout() {
     Provider.of<AuthProvider>(context, listen: false).logout();
     context.go('/login');
@@ -32,6 +43,49 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
+  /// 🔁 Fetch today's attendance & active buses
+  void fetchTodayData() async {
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('attendance_logs')
+        .where(
+          'timestamp',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
+        )
+        .where('timestamp', isLessThan: Timestamp.fromDate(endOfDay))
+        .get();
+
+    final studentIds = snapshot.docs
+        .map((doc) => doc['studentId']?.toString())
+        .whereType<String>()
+        .toSet();
+
+    final buses = snapshot.docs
+        .map((doc) => doc['busNumber']?.toString())
+        .where((b) => b != null && b.isNotEmpty && b != 'NA')
+        .toSet();
+
+    setState(() {
+      todayAttendance = studentIds.length;
+      activeBusCount = buses.length;
+    });
+  }
+
+  /// ⏰ Schedule midnight refresh
+  void scheduleDailyRefresh() {
+    final now = DateTime.now();
+    final nextMidnight = DateTime(now.year, now.month, now.day + 1);
+    final timeUntilMidnight = nextMidnight.difference(now);
+
+    Future.delayed(timeUntilMidnight, () {
+      fetchTodayData(); // refresh
+      scheduleDailyRefresh(); // reschedule for next day
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -40,11 +94,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
         backgroundColor: const Color(0xff3f51b5),
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
-            onPressed: _logout,
-          ),
+          IconButton(icon: const Icon(Icons.logout), onPressed: _logout),
         ],
       ),
       body: Column(
@@ -53,10 +103,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             child: PageView(
               controller: _pageController,
               onPageChanged: (index) => setState(() => _currentPage = index),
-              children: [
-                Builder(builder: (_) => _buildStatsPage()),
-                Builder(builder: (_) => _buildCapacityPage()),
-              ],
+              children: [_buildStatsPage(), _buildCapacityPage()],
             ),
           ),
           Padding(
@@ -85,128 +132,93 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
+  /// 📊 Page 1: Dashboard Stats
   Widget _buildStatsPage() {
-    Stream<List<int>> getStatsStream() async* {
-      final now = DateTime.now();
-      final startOfDay = DateTime(now.year, now.month, now.day);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              _buildStatCard(
+                "Total Students",
+                totalStudents.toString(),
+                Icons.group,
+              ),
+              const SizedBox(width: 12),
+              _buildStatCard(
+                "Today's Present",
+                todayAttendance.toString(),
+                Icons.check_circle,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildStatCard(
+                "Total Buses",
+                totalBuses.toString(),
+                Icons.directions_bus,
+              ),
+              const SizedBox(width: 12),
+              _buildStatCard(
+                "Active Buses",
+                activeBusCount.toString(),
+                Icons.local_shipping,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
-      final scanStream = FirebaseFirestore.instance
-          .collectionGroup('scans')
-          .where(
-            'timestamp',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
-          )
-          .snapshots();
+  /// 📊 Page 2: Bus Fill Capacity
+  Widget _buildCapacityPage() {
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = startOfDay.add(const Duration(days: 1));
 
-      await for (final snapshot in scanStream) {
-        final docs = snapshot.docs;
-        final todayStudentIds = docs
-            .map((doc) => doc.data()['studentId']?.toString())
-            .whereType<String>()
-            .toSet();
-        final todayAttendance = todayStudentIds.length;
+    final stream = FirebaseFirestore.instance
+        .collection('attendance_logs')
+        .where(
+          'timestamp',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
+        )
+        .where('timestamp', isLessThan: Timestamp.fromDate(endOfDay))
+        .snapshots();
 
-        final busNumbers = docs
-            .map((doc) => doc.data()['busNumber']?.toString())
-            .whereType<String>()
-            .toSet();
-        final activeBusCount = busNumbers.length;
-
-        yield [totalStudents, todayAttendance, activeBusCount];
-      }
-    }
-
-    return StreamBuilder<List<int>>(
-      stream: getStatsStream(),
+    return StreamBuilder<QuerySnapshot>(
+      stream: stream,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final totalStudents = snapshot.data![0].toString();
-        final todayPresent = snapshot.data![1].toString();
-        final activeBuses = snapshot.data![2].toString();
+        final docs = snapshot.data!.docs;
 
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  _buildStatCard("Total Students", totalStudents, Icons.group),
-                  const SizedBox(width: 12),
-                  _buildStatCard(
-                    "Today's Present",
-                    todayPresent,
-                    Icons.check_circle,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  _buildStatCard(
-                    "Total Buses",
-                    totalBuses.toString(),
-                    Icons.directions_bus,
-                  ),
-                  const SizedBox(width: 12),
-                  _buildStatCard(
-                    "Active Buses",
-                    activeBuses,
-                    Icons.local_shipping,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildCapacityPage() {
-    Stream<List<Map<String, dynamic>>> getBusCapacityStream() async* {
-      final now = DateTime.now();
-      final startOfDay = DateTime(now.year, now.month, now.day);
-
-      final snapshots = FirebaseFirestore.instance
-          .collectionGroup('scans')
-          .where(
-            'timestamp',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
-          )
-          .snapshots();
-
-      await for (final snapshot in snapshots) {
         final Map<String, int> busCounts = {};
-        for (var doc in snapshot.docs) {
-          final data = doc.data();
+        for (var doc in docs) {
+          final data = doc.data() as Map<String, dynamic>;
           final bus = data['busNumber'];
           if (bus != null && bus != '') {
             busCounts[bus] = (busCounts[bus] ?? 0) + 1;
           }
         }
 
-        final result = busCounts.entries.map((entry) {
-          final fillPercent = ((entry.value / maxBusCapacity) * 100).toInt();
-          return {'bus': entry.key, 'fill': fillPercent, 'count': entry.value};
+        final buses = busCounts.entries.map((entry) {
+          final percent = ((entry.value / maxBusCapacity) * 100).toInt();
+          return {'bus': entry.key, 'count': entry.value, 'fill': percent};
         }).toList();
 
-        yield result;
-      }
-    }
+        final underCapacity = buses
+            .where((b) => (b['fill'] as int? ?? 0) < 50)
+            .toList();
 
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: getBusCapacityStream(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        final data = snapshot.data!;
-        final underCapacity = data.where((bus) => bus['fill'] < 50).toList();
-        final overCapacity = data.where((bus) => bus['fill'] > 100).toList();
+        final overCapacity = buses
+            .where((b) => (b['fill'] as int? ?? 0) > 100)
+            .toList();
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -233,6 +245,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
+  /// 📦 Stat Card Widget
   Widget _buildStatCard(String title, String count, IconData icon) {
     return Expanded(
       child: Container(
@@ -265,6 +278,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
+  /// 🚨 Alert List Widget
   Widget _buildAlertList(List<Map<String, dynamic>> buses, Color color) {
     return Column(
       children: buses.map((bus) {
