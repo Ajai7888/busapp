@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
-import '../providers/auth_provider.dart';
+import '../../providers/auth_provider.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -14,7 +14,10 @@ class AdminDashboard extends StatefulWidget {
 class _AdminDashboardState extends State<AdminDashboard> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
+
   final int maxBusCapacity = 40;
+  final int totalStudents = 60;
+  final int totalBuses = 10;
 
   void _logout() {
     Provider.of<AuthProvider>(context, listen: false).logout();
@@ -27,65 +30,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
       duration: const Duration(milliseconds: 300),
       curve: Curves.easeInOut,
     );
-  }
-
-  Stream<List<int>> getStatsStream() {
-    final startOfDay = DateTime.now().copyWith(hour: 0, minute: 0, second: 0);
-
-    return FirebaseFirestore.instance
-        .collectionGroup('scans')
-        .where(
-          'timestamp',
-          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
-        )
-        .snapshots()
-        .asyncMap((snapshot) async {
-          final attendanceDocs = snapshot.docs;
-
-          final users = await FirebaseFirestore.instance
-              .collection('users')
-              .where('role', isEqualTo: 'faculty')
-              .get();
-
-          final activeFaculty = attendanceDocs
-              .map((e) => e['faculty'])
-              .toSet()
-              .length;
-          final attendanceToday = attendanceDocs.length;
-
-          return [users.docs.length, activeFaculty, attendanceToday];
-        });
-  }
-
-  Stream<List<Map<String, dynamic>>> getBusCapacityStream() {
-    final startOfDay = DateTime.now().copyWith(hour: 0, minute: 0, second: 0);
-
-    return FirebaseFirestore.instance
-        .collectionGroup('scans')
-        .where(
-          'timestamp',
-          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
-        )
-        .snapshots()
-        .map((snapshot) {
-          final Map<String, int> busCounts = {};
-
-          for (var doc in snapshot.docs) {
-            final bus = doc['busNumber'];
-            if (bus != null && bus != '') {
-              busCounts[bus] = (busCounts[bus] ?? 0) + 1;
-            }
-          }
-
-          return busCounts.entries.map((entry) {
-            final fillPercent = ((entry.value / maxBusCapacity) * 100).toInt();
-            return {
-              'bus': entry.key,
-              'fill': fillPercent,
-              'count': entry.value,
-            };
-          }).toList();
-        });
   }
 
   @override
@@ -109,7 +53,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
             child: PageView(
               controller: _pageController,
               onPageChanged: (index) => setState(() => _currentPage = index),
-              children: [_buildStatsPage(), _buildCapacityPage()],
+              children: [
+                Builder(builder: (_) => _buildStatsPage()),
+                Builder(builder: (_) => _buildCapacityPage()),
+              ],
             ),
           ),
           Padding(
@@ -139,6 +86,36 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget _buildStatsPage() {
+    Stream<List<int>> getStatsStream() async* {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+
+      final scanStream = FirebaseFirestore.instance
+          .collectionGroup('scans')
+          .where(
+            'timestamp',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
+          )
+          .snapshots();
+
+      await for (final snapshot in scanStream) {
+        final docs = snapshot.docs;
+        final todayStudentIds = docs
+            .map((doc) => doc.data()['studentId']?.toString())
+            .whereType<String>()
+            .toSet();
+        final todayAttendance = todayStudentIds.length;
+
+        final busNumbers = docs
+            .map((doc) => doc.data()['busNumber']?.toString())
+            .whereType<String>()
+            .toSet();
+        final activeBusCount = busNumbers.length;
+
+        yield [totalStudents, todayAttendance, activeBusCount];
+      }
+    }
+
     return StreamBuilder<List<int>>(
       stream: getStatsStream(),
       builder: (context, snapshot) {
@@ -146,9 +123,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final studentCount = snapshot.data![0].toString();
-        final activeFaculty = snapshot.data![1].toString();
-        final attendanceToday = snapshot.data![2].toString();
+        final totalStudents = snapshot.data![0].toString();
+        final todayPresent = snapshot.data![1].toString();
+        final activeBuses = snapshot.data![2].toString();
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -156,24 +133,28 @@ class _AdminDashboardState extends State<AdminDashboard> {
             children: [
               Row(
                 children: [
-                  _buildStatCard("Total Buses", "25", Icons.directions_bus),
+                  _buildStatCard("Total Students", totalStudents, Icons.group),
                   const SizedBox(width: 12),
                   _buildStatCard(
-                    "Active Today",
-                    activeFaculty,
-                    Icons.directions_run,
+                    "Today's Present",
+                    todayPresent,
+                    Icons.check_circle,
                   ),
                 ],
               ),
               const SizedBox(height: 12),
               Row(
                 children: [
-                  _buildStatCard("Total Students", studentCount, Icons.group),
+                  _buildStatCard(
+                    "Total Buses",
+                    totalBuses.toString(),
+                    Icons.directions_bus,
+                  ),
                   const SizedBox(width: 12),
                   _buildStatCard(
-                    "Today's Present",
-                    attendanceToday,
-                    Icons.check_circle,
+                    "Active Buses",
+                    activeBuses,
+                    Icons.local_shipping,
                   ),
                 ],
               ),
@@ -185,6 +166,37 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget _buildCapacityPage() {
+    Stream<List<Map<String, dynamic>>> getBusCapacityStream() async* {
+      final now = DateTime.now();
+      final startOfDay = DateTime(now.year, now.month, now.day);
+
+      final snapshots = FirebaseFirestore.instance
+          .collectionGroup('scans')
+          .where(
+            'timestamp',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
+          )
+          .snapshots();
+
+      await for (final snapshot in snapshots) {
+        final Map<String, int> busCounts = {};
+        for (var doc in snapshot.docs) {
+          final data = doc.data();
+          final bus = data['busNumber'];
+          if (bus != null && bus != '') {
+            busCounts[bus] = (busCounts[bus] ?? 0) + 1;
+          }
+        }
+
+        final result = busCounts.entries.map((entry) {
+          final fillPercent = ((entry.value / maxBusCapacity) * 100).toInt();
+          return {'bus': entry.key, 'fill': fillPercent, 'count': entry.value};
+        }).toList();
+
+        yield result;
+      }
+    }
+
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: getBusCapacityStream(),
       builder: (context, snapshot) {
@@ -280,13 +292,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 backgroundColor: Colors.grey.shade300,
                 valueColor: AlwaysStoppedAnimation<Color>(color),
                 minHeight: 10,
-              ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton(
-                  onPressed: () {},
-                  child: const Text("View All"),
-                ),
               ),
             ],
           ),
