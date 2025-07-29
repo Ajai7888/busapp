@@ -1,11 +1,47 @@
-// lib/screens/attendance_log_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import 'package:bus_application/services/excel_export_service.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:share_plus/share_plus.dart';
+import 'dart:io';
 
 class AttendanceLogScreen extends StatelessWidget {
   const AttendanceLogScreen({super.key});
+
+  Future<void> _exportLogs(BuildContext context, String scannedBy) async {
+    try {
+      if (!await Permission.manageExternalStorage.isGranted) {
+        final status = await Permission.manageExternalStorage.request();
+        if (!status.isGranted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("❌ Storage permission denied")),
+          );
+          return;
+        }
+      }
+
+      final filePath = await ExcelExportService.exportLogsToExcel(
+        scannedBy: scannedBy,
+      );
+
+      if (filePath != null) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("✅ Excel Exported Successfully!")),
+        );
+
+        Share.shareXFiles([XFile(filePath)], text: '📄 My Attendance Report');
+      } else {
+        throw 'No logs found to export.';
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("❌ Error: $e")));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -44,6 +80,17 @@ class AttendanceLogScreen extends StatelessWidget {
           appBar: AppBar(
             title: const Text("Today's Attendance Logs"),
             backgroundColor: Colors.indigo,
+            actions: [
+              IconButton(
+                icon: const Icon(
+                  Icons.file_download,
+                  color: Colors.white60, // Set your desired color here
+                ),
+
+                tooltip: "Export to Excel",
+                onPressed: () => _exportLogs(context, scannedBy),
+              ),
+            ],
           ),
           body: StreamBuilder<QuerySnapshot>(
             stream: stream,

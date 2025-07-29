@@ -1,30 +1,28 @@
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'package:go_router/go_router.dart'; // ✅ Required for GoRouter navigation
+import 'package:flutter_riverpod/flutter_riverpod.dart'; // ✅ Riverpod import
+import 'package:go_router/go_router.dart';
 
-import '../providers/auth_provider.dart';
+import '../providers/auth_provider.dart'; // ✅ Includes AppAuthProvider + authProvider
 import 'bus_selection_screen.dart';
 import 'scan_screen.dart';
 import 'report_screen.dart';
 import 'profile.dart';
 import 'attendance_log_screen.dart';
 
-class UserDashboard extends StatelessWidget {
+class UserDashboard extends ConsumerWidget {
   const UserDashboard({super.key});
 
   void _logout(BuildContext context) async {
     await FirebaseAuth.instance.signOut();
-
-    // ✅ Use GoRouter instead of Navigator to avoid crash
     if (context.mounted) {
-      context.go('/login'); // Redirect to login screen
+      context.go('/login'); // ✅ Use GoRouter to redirect
     }
   }
 
   @override
-  Widget build(BuildContext context) {
-    final user = Provider.of<AuthProvider>(context).user;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(authProvider).user; // ✅ Get user from provider
 
     return Scaffold(
       appBar: AppBar(
@@ -59,13 +57,6 @@ class UserDashboard extends StatelessWidget {
               ),
             ),
             _dashboardButton(
-              label: "Export Report to Excel",
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const ReportScreen()),
-              ),
-            ),
-            _dashboardButton(
               label: "My Profile",
               onTap: () => Navigator.push(
                 context,
@@ -79,7 +70,6 @@ class UserDashboard extends StatelessWidget {
                 MaterialPageRoute(builder: (_) => BusSelectionScreen()),
               ),
             ),
-
             const SizedBox(height: 20),
             Text(
               "Logged in as: ${user?.role.toUpperCase() ?? ''}",

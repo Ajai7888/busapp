@@ -1,37 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:provider/provider.dart';
 import 'firebase_options.dart';
-import 'providers/auth_provider.dart';
-import 'providers/attendance_provider.dart';
-import 'app_router.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+// Your app entry point and providers
+import 'app.dart';
+import 'providers/auth_provider.dart'; // contains authProvider
+import 'providers/attendance_provider.dart'; // contains attendanceProvider
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  runApp(const MyApp());
+  final initialRoute = await getInitialRoute();
+
+  runApp(ProviderScope(child: MyApp(initialRoute: initialRoute)));
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+Future<String> getInitialRoute() async {
+  final user = FirebaseAuth.instance.currentUser;
 
-  @override
-  Widget build(BuildContext context) {
-    return MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => AttendanceProvider()),
-      ],
-      child: MaterialApp.router(
-        debugShowCheckedModeBanner: false,
-        title: 'Bus Attendance',
-        theme: ThemeData(
-          primarySwatch: Colors.indigo,
-          scaffoldBackgroundColor: const Color(0xFFEEF2FF),
-        ),
-        routerConfig: appRouter, // ✅ Must be an instance of GoRouter
-      ),
-    );
-  }
+  if (user == null) return '/login';
+
+  final doc = await FirebaseFirestore.instance
+      .collection('users')
+      .doc(user.uid)
+      .get();
+
+  if (!doc.exists) return '/login';
+
+  final role = doc['role'];
+  final isApproved = doc['isApproved'] ?? false;
+
+  if (role == 'admin') return '/admin-dashboard';
+  if (role == 'faculty' && isApproved) return '/user-dashboard';
+
+  return '/login';
 }

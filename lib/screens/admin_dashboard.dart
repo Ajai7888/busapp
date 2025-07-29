@@ -1,18 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 
-class AdminDashboard extends StatefulWidget {
+class AdminDashboard extends ConsumerStatefulWidget {
   const AdminDashboard({super.key});
 
   @override
-  State<AdminDashboard> createState() => _AdminDashboardState();
+  ConsumerState<AdminDashboard> createState() => _AdminDashboardState();
 }
 
-class _AdminDashboardState extends State<AdminDashboard> {
+class _AdminDashboardState extends ConsumerState<AdminDashboard> {
   final PageController _pageController = PageController();
   int _currentPage = 0;
 
@@ -26,12 +26,12 @@ class _AdminDashboardState extends State<AdminDashboard> {
   @override
   void initState() {
     super.initState();
-    fetchTodayData(); // initial fetch
-    scheduleDailyRefresh(); // schedule 12AM refresh
+    fetchTodayData();
+    scheduleDailyRefresh();
   }
 
   void _logout() {
-    Provider.of<AuthProvider>(context, listen: false).logout();
+    ref.read(authProvider).logout();
     context.go('/login');
   }
 
@@ -43,7 +43,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  /// 🔁 Fetch today's attendance & active buses
   void fetchTodayData() async {
     final now = DateTime.now();
     final startOfDay = DateTime(now.year, now.month, now.day);
@@ -74,15 +73,14 @@ class _AdminDashboardState extends State<AdminDashboard> {
     });
   }
 
-  /// ⏰ Schedule midnight refresh
   void scheduleDailyRefresh() {
     final now = DateTime.now();
     final nextMidnight = DateTime(now.year, now.month, now.day + 1);
     final timeUntilMidnight = nextMidnight.difference(now);
 
     Future.delayed(timeUntilMidnight, () {
-      fetchTodayData(); // refresh
-      scheduleDailyRefresh(); // reschedule for next day
+      fetchTodayData();
+      scheduleDailyRefresh();
     });
   }
 
@@ -132,7 +130,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  /// 📊 Page 1: Dashboard Stats
   Widget _buildStatsPage() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -174,7 +171,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  /// 📊 Page 2: Bus Fill Capacity
   Widget _buildCapacityPage() {
     final now = DateTime.now();
     final startOfDay = DateTime(now.year, now.month, now.day);
@@ -197,8 +193,8 @@ class _AdminDashboardState extends State<AdminDashboard> {
         }
 
         final docs = snapshot.data!.docs;
-
         final Map<String, int> busCounts = {};
+
         for (var doc in docs) {
           final data = doc.data() as Map<String, dynamic>;
           final bus = data['busNumber'];
@@ -215,7 +211,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
         final underCapacity = buses
             .where((b) => (b['fill'] as int? ?? 0) < 50)
             .toList();
-
         final overCapacity = buses
             .where((b) => (b['fill'] as int? ?? 0) > 100)
             .toList();
@@ -245,7 +240,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  /// 📦 Stat Card Widget
   Widget _buildStatCard(String title, String count, IconData icon) {
     return Expanded(
       child: Container(
@@ -278,7 +272,6 @@ class _AdminDashboardState extends State<AdminDashboard> {
     );
   }
 
-  /// 🚨 Alert List Widget
   Widget _buildAlertList(List<Map<String, dynamic>> buses, Color color) {
     return Column(
       children: buses.map((bus) {

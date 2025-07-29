@@ -1,19 +1,18 @@
-import 'package:bus_application/screens/attendance_log_screen.dart';
-//import 'package:bus_application/screens/attendance_sheet_screen.dart';
+// lib/app_router.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'screens/splash_screen.dart';
+
 import 'screens/login_screen.dart';
 import 'screens/signup_screen.dart';
 import 'screens/approval_screen.dart';
 import 'screens/user_dashboard.dart';
 import 'screens/admin_dashboard.dart';
 import 'screens/scan_screen.dart';
+import 'screens/attendance_log_screen.dart';
 
-final GoRouter appRouter = GoRouter(
-  initialLocation: '/',
+GoRouter appRouter(String initialPath) => GoRouter(
+  initialLocation: initialPath,
   routes: [
-    GoRoute(path: '/', builder: (context, state) => const SplashScreen()),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     GoRoute(path: '/signup', builder: (context, state) => const SignupScreen()),
     GoRoute(
@@ -28,9 +27,6 @@ final GoRouter appRouter = GoRouter(
       path: '/admin-dashboard',
       builder: (context, state) => const AdminDashboard(),
     ),
-
-    // ✅ Optional: Redirect `/home` to /user-dashboard by default
-    GoRoute(path: '/home', redirect: (context, state) => '/user-dashboard'),
     GoRoute(path: '/scan', builder: (context, state) => const ScanScreen()),
     GoRoute(
       path: '/attendance-sheet',

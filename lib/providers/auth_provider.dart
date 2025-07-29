@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:go_router/go_router.dart';
+
 import '../services/auth_service.dart';
 import '../models/user_model.dart';
 
-class AuthProvider with ChangeNotifier {
+/// ✅ ChangeNotifier Provider for Riverpod
+final authProvider = ChangeNotifierProvider<AppAuthProvider>((ref) {
+  return AppAuthProvider();
+});
+
+class AppAuthProvider with ChangeNotifier {
   final AuthService _authService = AuthService();
 
   AppUser? _user;
@@ -26,7 +34,7 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  /// Signup Method with Role Check and Context for Navigation
+  /// Signup Method with Role Check and Safe Navigation
   Future<void> signup(
     String name,
     String email,
@@ -40,25 +48,23 @@ class AuthProvider with ChangeNotifier {
       _user = await _authService.getUserDetails(firebaseUser.uid);
       notifyListeners();
 
-      if (role == 'admin') {
-        // Directly navigate admin to dashboard
-        Navigator.pushReplacementNamed(context, '/adminDashboard');
-      } else {
-        // Faculty needs approval
-        await _authService.signOut();
-        _user = null;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Signup successful! Please wait for admin approval."),
-          ),
-        );
-        Navigator.pop(context); // Back to login
+      // Sign out and reset state after signup
+      await _authService.signOut();
+      _user = null;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Signup successful! Please login.")),
+      );
+
+      // ✅ Go to login screen using GoRouter
+      if (context.mounted) {
+        context.go('/login');
       }
     }
   }
 
-  /// Logout
-  void logout() async {
+  /// Logout Method
+  Future<void> logout() async {
     await _authService.signOut();
     _user = null;
     notifyListeners();

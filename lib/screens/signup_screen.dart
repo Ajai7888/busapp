@@ -1,19 +1,20 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../providers/auth_provider.dart';
 
-class SignupScreen extends StatefulWidget {
+class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
 
   @override
-  State<SignupScreen> createState() => _SignupScreenState();
+  ConsumerState<SignupScreen> createState() => _SignupScreenState();
 }
 
-class _SignupScreenState extends State<SignupScreen>
+class _SignupScreenState extends ConsumerState<SignupScreen>
     with TickerProviderStateMixin {
   late TabController _tabController;
   final _formKey = GlobalKey<FormState>();
-
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -31,22 +32,25 @@ class _SignupScreenState extends State<SignupScreen>
   }
 
   void _handleSignup() async {
-    try {
-      await Provider.of<AuthProvider>(context, listen: false).signup(
-        _nameController.text.trim(),
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-        selectedRole,
-        context,
-      );
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Signup successful! Please wait for approval.")),
-      );
-      Navigator.pop(context);
-    } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(e.toString())));
+    if (_formKey.currentState!.validate()) {
+      try {
+        // ✅ Use Riverpod's ref.read() for calling signup
+        await ref
+            .read(authProvider)
+            .signup(
+              _nameController.text.trim(),
+              _emailController.text.trim(),
+              _passwordController.text.trim(),
+              selectedRole,
+              context,
+            );
+
+        // ✅ Snackbar confirmation is already in signup function
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Signup error: ${e.toString()}")),
+        );
+      }
     }
   }
 
@@ -60,7 +64,14 @@ class _SignupScreenState extends State<SignupScreen>
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 12,
+                offset: const Offset(0, 6),
+              ),
+            ],
           ),
           child: Form(
             key: _formKey,
@@ -68,62 +79,68 @@ class _SignupScreenState extends State<SignupScreen>
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Text(
-                  "Sign Up",
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                  "Register Account",
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 TabBar(
                   controller: _tabController,
-                  indicatorColor: Colors.blue,
+                  indicator: BoxDecoration(
+                    color: Colors.indigo,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   labelColor: Colors.white,
                   unselectedLabelColor: Colors.black,
-                  labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-                  indicator: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    color: Colors.blue,
-                  ),
                   tabs: const [
                     Tab(text: "Faculty"),
                     Tab(text: "Admin"),
                   ],
                 ),
                 const SizedBox(height: 20),
-
                 TextFormField(
                   controller: _nameController,
-                  decoration: const InputDecoration(labelText: "Name"),
+                  decoration: const InputDecoration(
+                    labelText: "Name",
+                    border: OutlineInputBorder(),
+                  ),
                   validator: (value) =>
-                      value!.isEmpty ? 'Please enter your name' : null,
+                      value!.isEmpty ? 'Enter your name' : null,
                 ),
                 const SizedBox(height: 10),
-
                 TextFormField(
                   controller: _emailController,
-                  decoration: const InputDecoration(labelText: "Email"),
+                  decoration: const InputDecoration(
+                    labelText: "Email",
+                    border: OutlineInputBorder(),
+                  ),
                   validator: (value) =>
-                      value!.isEmpty ? 'Please enter your email' : null,
+                      value!.isEmpty ? 'Enter your email' : null,
                 ),
                 const SizedBox(height: 10),
-
                 TextFormField(
                   controller: _passwordController,
                   obscureText: true,
-                  decoration: const InputDecoration(labelText: "Password"),
+                  decoration: const InputDecoration(
+                    labelText: "Password",
+                    border: OutlineInputBorder(),
+                  ),
                   validator: (value) =>
                       value!.length < 6 ? 'Minimum 6 characters' : null,
                 ),
                 const SizedBox(height: 20),
-
                 ElevatedButton(
                   onPressed: _handleSignup,
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size.fromHeight(48),
-                    backgroundColor: Colors.blue,
+                    backgroundColor: Colors.indigo,
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: BorderRadius.circular(10),
                     ),
                   ),
-                  child: const Text("Register"),
+                  child: const Text(
+                    "Register",
+                    style: TextStyle(color: Colors.white),
+                  ),
                 ),
               ],
             ),
